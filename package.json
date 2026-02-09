@@ -1,16 +1,8 @@
 {
   "name": "dz34sni-relay",
-  "version": "1.0.0",
-  "description": "DZ34SNI Liveness Relay Server",
+  "version": "2.0.0",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": "18.x"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    "cors": "^2.8.5"
-  }
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": "18.x" },
+  "dependencies": { "express": "^4.18.2", "cors": "^2.8.5" }
 }
