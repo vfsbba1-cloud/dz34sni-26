@@ -1,7 +1,7 @@
 {
-  "name": "dz34sni-server",
-  "version": "2.0.0",
-  "description": "DZ34SNI Liveness Relay Server",
+  "name": "2ao-selfie-server",
+  "version": "1.0.0",
+  "description": "2AO Selfie Liveness Relay Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
