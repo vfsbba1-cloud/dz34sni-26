@@ -205,10 +205,11 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
 (function(){
     var REAL_IP = '${ip}';
     if (!REAL_IP) return;
+    function isOzApi(u){ return typeof u==='string' && u.indexOf('ozforensics.com')!==-1 && u.indexOf('web-sdk.prod.cdn')===-1 && u.indexOf('.php')===-1 && u.indexOf('.js')===-1; }
     var _f = window.fetch;
     window.fetch = function(u, o) {
         o = o || {};
-        if (typeof u === 'string' && u.indexOf('ozforensics.com') !== -1) {
+        if (isOzApi(u)) {
             if (!o.headers) o.headers = {};
             if (o.headers instanceof Headers) {
                 o.headers.set('X-Forwarded-For', REAL_IP);
@@ -225,7 +226,7 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
     var _xh = XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.open = function(m, u) { this._dzUrl = u; return _xo.apply(this, arguments); };
     XMLHttpRequest.prototype.send = function() {
-        if (this._dzUrl && this._dzUrl.indexOf('ozforensics.com') !== -1) {
+        if (isOzApi(this._dzUrl)) {
             try { _xh.call(this, 'X-Forwarded-For', REAL_IP); } catch(e) {}
             try { _xh.call(this, 'X-Real-IP', REAL_IP); } catch(e) {}
         }
