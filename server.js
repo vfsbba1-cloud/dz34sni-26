@@ -205,7 +205,7 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
 (function(){
     var REAL_IP = '${ip}';
     if (!REAL_IP) return;
-    function isOzApi(u){ return typeof u==='string' && u.indexOf('ozforensics.com')!==-1 && u.indexOf('web-sdk.prod.cdn')===-1 && u.indexOf('.php')===-1 && u.indexOf('.js')===-1; }
+    function isOzApi(u){ return typeof u==='string' && u.indexOf('ozforensics.com')!==-1 && u.indexOf('web-sdk.prod.cdn.spain.ozforensics.com')===-1; }
     var _f = window.fetch;
     window.fetch = function(u, o) {
         o = o || {};
