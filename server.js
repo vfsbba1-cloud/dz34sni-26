@@ -1,6 +1,8 @@
 /**
- * 2AO Selfie Server
+ * 2AO Selfie Server v1.1
  * Deploy on Render: https://dz34sni-26.onrender.com
+ * 
+ * v1.1: Added proxy field to task storage (backward compatible)
  * 
  * Flow (uses 4-digit CODE instead of phone):
  * 1. Agent captures userId + transactionId from BLS liveness page
@@ -70,6 +72,7 @@ app.post('/task/:code', (req, res) => {
         userId: body.userId,
         transactionId: body.transactionId,
         realIp: body.realIp || '',
+        proxy: body.proxy || '',
         cookies: body.cookies || '',
         userAgent: body.userAgent || '',
         pageUrl: body.pageUrl || '',
@@ -77,7 +80,7 @@ app.post('/task/:code', (req, res) => {
         timestamp: body.timestamp || Date.now()
     };
 
-    console.log(`[TASK] 📥 ${code}: userId=${body.userId.substring(0, 20)}... realIp=${body.realIp || 'none'}`);
+    console.log(`[TASK] 📥 ${code}: userId=${body.userId.substring(0, 20)}... realIp=${body.realIp || 'none'} proxy=${body.proxy ? '✅' : '—'}`);
     res.json({ ok: true });
 });
 
@@ -336,7 +339,7 @@ window.addEventListener('load', function() {
 app.get('/', (req, res) => {
     res.json({
         service: '2AO Selfie',
-        version: '1.0',
+        version: '1.1',
         status: 'running',
         activeTasks: Object.keys(tasks).length,
         activeResults: Object.keys(results).length,
@@ -359,7 +362,7 @@ app.get('/debug', (req, res) => {
 // START
 // ═══════════════════════════════════════════
 app.listen(PORT, () => {
-    console.log(`\n🔥 2AO Selfie Server v1.0`);
+    console.log(`\n🔥 2AO Selfie Server v1.1`);
     console.log(`   Port: ${PORT}`);
     console.log(`   Ready!\n`);
 });
