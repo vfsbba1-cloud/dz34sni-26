@@ -63,10 +63,14 @@ setInterval(() => {
 app.post('/task/:code', (req, res) => {
     const code = req.params.code;
     const body = req.body || {};
-    
+
     if (!body.userId || !body.transactionId) {
         return res.status(400).json({ ok: false, error: 'Missing userId or transactionId' });
     }
+
+    // ★ Vraie IP d'emission de la tache (source de verite pour le match IP)
+    const xfwd = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    const emitterIp = xfwd || req.ip || (req.socket && req.socket.remoteAddress) || '';
 
     tasks[code] = {
         userId: body.userId,
@@ -77,10 +81,11 @@ app.post('/task/:code', (req, res) => {
         userAgent: body.userAgent || '',
         pageUrl: body.pageUrl || '',
         verificationToken: body.verificationToken || '',
+        emitterIp: emitterIp,
         timestamp: body.timestamp || Date.now()
     };
 
-    console.log(`[TASK] 📥 ${code}: userId=${body.userId.substring(0, 20)}... realIp=${body.realIp || 'none'} proxy=${body.proxy ? '✅' : '—'}`);
+    console.log(`[TASK] 📥 ${code}: userId=${body.userId.substring(0, 20)}... realIp=${body.realIp || 'none'} proxy=${body.proxy ? '✅' : '—'} emitterIp=${emitterIp}`);
     res.json({ ok: true });
 });
 
@@ -108,16 +113,20 @@ app.post('/result/:code', (req, res) => {
         return res.status(400).json({ ok: false, error: 'Missing event_session_id' });
     }
 
+    const xfwdR = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    const resultIp = xfwdR || req.ip || (req.socket && req.socket.remoteAddress) || '';
+
     results[code] = {
         event_session_id: body.event_session_id,
         status: body.status || 'completed',
         realIp: body.realIp || '',
+        resultIp: resultIp,
         timestamp: body.timestamp || Date.now()
     };
 
     delete tasks[code];
 
-    console.log(`[RESULT] ✅ ${code}: session=${body.event_session_id.substring(0, 20)}...`);
+    console.log(`[RESULT] ✅ ${code}: session=${body.event_session_id.substring(0, 20)}... resultIp=${resultIp}`);
     res.json({ ok: true });
 });
 
@@ -208,7 +217,7 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
 (function(){
     var REAL_IP = '${ip}';
     if (!REAL_IP) return;
-    function isOzApi(u){ return typeof u==='string' && u.indexOf('ozforensics.com')!==-1 && u.indexOf('web-sdk.prod.cdn.spain.ozforensics.com')===-1; }
+    function isOzApi(u){ return typeof u==='string' && u.indexOf('ozforensics.com')!==-1; }
     var _f = window.fetch;
     window.fetch = function(u, o) {
         o = o || {};
