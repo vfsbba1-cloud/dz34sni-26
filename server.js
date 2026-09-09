@@ -1,8 +1,11 @@
 /**
- * 2AO Selfie Server v1.1
+ * 2AO Selfie Server v1.2
  * Deploy on Render: https://dz34sni-26.onrender.com
  * 
- * v1.1: Added proxy field to task storage (backward compatible)
+ * v1.2 FIXES:
+ *  - Location.prototype spoof (fakes document.location.origin to BLS)
+ *  - Origin/Referer headers on OZ API calls (not just X-Forwarded-For)
+ *  - Consistent header injection across all OZ requests
  * 
  * Flow (uses 4-digit CODE instead of phone):
  * 1. Agent captures userId + transactionId from BLS liveness page
@@ -77,6 +80,7 @@ app.post('/task/:code', (req, res) => {
         userAgent: body.userAgent || '',
         pageUrl: body.pageUrl || '',
         verificationToken: body.verificationToken || '',
+        ozConfig: body.ozConfig || '',
         timestamp: body.timestamp || Date.now()
     };
 
@@ -150,7 +154,7 @@ app.delete('/clear/:code', (req, res) => {
 // ═══════════════════════════════════════════
 
 app.get('/oz-page', (req, res) => {
-    const { userId, transactionId, realIp, code, phone } = req.query;
+    const { userId, transactionId, realIp, code, phone, proxy } = req.query;
     const clientCode = code || phone || '';
     
     const escJs = (s) => (s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e');
@@ -200,15 +204,46 @@ body { margin: 0; background: #08090d; font-family: system-ui, sans-serif; }
     </div>
 </div>
 
+<!-- ═══ LOCATION ORIGIN SPOOF ═══ -->
+<!-- The OZ SDK checks document.location.origin against its license.
+     This page lives on onrender.com → LICENSE_ORIGIN_ERROR.
+     We patch Location.prototype BEFORE any SDK script runs so
+     the SDK sees algeria.blsinternational.com as the origin. -->
 <script>
-try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(e) {}
+(function(){
+    var B='https://algeria.blsinternational.com';
+    var H='algeria.blsinternational.com';
+    try{Object.defineProperty(window,'origin',{configurable:true,get:function(){return B;}});}catch(e){}
+    try{Object.defineProperty(location,'origin',{configurable:true,get:function(){return B;}});}catch(e){}
+    try{Object.defineProperty(document,'domain',{configurable:true,get:function(){return H;}});}catch(e){}
+    try{Object.defineProperty(document,'referrer',{configurable:true,get:function(){return B+'/manage-appointments';}});}catch(e){}
+    var P=window.Location&&window.Location.prototype;
+    if(P){
+        [['origin',function(){return B;}],
+        ['hostname',function(){return H;}],
+        ['host',function(){return H;}],
+        ['protocol',function(){return 'https:';}]
+        ].forEach(function(a){try{Object.defineProperty(P,a[0],{configurable:true,get:a[1]});}catch(e){}});
+    }
+    try{history.replaceState({},'', '/dza/appointment/LivenessRequest');}catch(e){}
+})();
 </script>
 
+<!-- ═══ OZ API HEADER INJECTION ═══ -->
+<!-- Intercept fetch/XHR to add Origin, Referer, X-Forwarded-For on OZ API calls.
+     Without Origin/Referer → LICENSE_ORIGIN_ERROR.
+     Without X-Forwarded-For → IP mismatch detected by OZ. -->
 <script>
 (function(){
     var REAL_IP = '${ip}';
-    if (!REAL_IP) return;
-    function isOzApi(u){ return typeof u==='string' && u.indexOf('ozforensics.com')!==-1 && u.indexOf('web-sdk.prod.cdn.spain.ozforensics.com')===-1; }
+    var BLS_ORIGIN = 'https://algeria.blsinternational.com';
+    var BLS_REFERER = 'https://algeria.blsinternational.com/manage-appointments';
+    
+    function isOzApi(u){ 
+        return typeof u==='string' && u.indexOf('ozforensics.com')!==-1 && u.indexOf('web-sdk.prod.cdn.spain.ozforensics.com')===-1; 
+    }
+    
+    // Patch fetch
     var _f = window.fetch;
     window.fetch = function(u, o) {
         o = o || {};
@@ -217,13 +252,19 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
             if (o.headers instanceof Headers) {
                 o.headers.set('X-Forwarded-For', REAL_IP);
                 o.headers.set('X-Real-IP', REAL_IP);
+                o.headers.set('Origin', BLS_ORIGIN);
+                o.headers.set('Referer', BLS_REFERER);
             } else {
                 o.headers['X-Forwarded-For'] = REAL_IP;
                 o.headers['X-Real-IP'] = REAL_IP;
+                o.headers['Origin'] = BLS_ORIGIN;
+                o.headers['Referer'] = BLS_REFERER;
             }
         }
         return _f.call(this, u, o);
     };
+    
+    // Patch XMLHttpRequest
     var _xo = XMLHttpRequest.prototype.open;
     var _xs = XMLHttpRequest.prototype.send;
     var _xh = XMLHttpRequest.prototype.setRequestHeader;
@@ -232,6 +273,8 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
         if (isOzApi(this._dzUrl)) {
             try { _xh.call(this, 'X-Forwarded-For', REAL_IP); } catch(e) {}
             try { _xh.call(this, 'X-Real-IP', REAL_IP); } catch(e) {}
+            try { _xh.call(this, 'Origin', BLS_ORIGIN); } catch(e) {}
+            try { _xh.call(this, 'Referer', BLS_REFERER); } catch(e) {}
         }
         return _xs.apply(this, arguments);
     };
@@ -244,7 +287,7 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
     <input type="hidden" name="__RequestVerificationToken" value="">
 </form>
 
-<script src="https://web-sdk.prod.cdn.spain.ozforensics.com/blsinternational/plugin_liveness.php"></script>
+<script src="https://web-sdk.prod.cdn.spain.ozforensics.com/blsinternational3/plugin_liveness.php?ver=1.9.7-29"></script>
 
 <script>
 function showSuccess() {
@@ -339,7 +382,7 @@ window.addEventListener('load', function() {
 app.get('/', (req, res) => {
     res.json({
         service: '2AO Selfie',
-        version: '1.1',
+        version: '1.2',
         status: 'running',
         activeTasks: Object.keys(tasks).length,
         activeResults: Object.keys(results).length,
@@ -362,7 +405,7 @@ app.get('/debug', (req, res) => {
 // START
 // ═══════════════════════════════════════════
 app.listen(PORT, () => {
-    console.log(`\n🔥 2AO Selfie Server v1.1`);
+    console.log(`\n🔥 2AO Selfie Server v1.2`);
     console.log(`   Port: ${PORT}`);
     console.log(`   Ready!\n`);
 });
