@@ -244,7 +244,7 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
     <input type="hidden" name="__RequestVerificationToken" value="">
 </form>
 
-<script src="https://web-sdk.prod.cdn.spain.ozforensics.com/blsinternational/plugin_liveness.php"></script>
+<script src="https://web-sdk.prod.cdn.spain.ozforensics.com/blsinternational3/plugin_liveness.php?ver=1.9.7-29"></script>
 
 <script>
 function showSuccess() {
