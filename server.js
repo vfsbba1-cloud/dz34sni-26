@@ -1,7 +1,9 @@
 /**
- * 2AO Selfie Server v1.2
+ * 2AO Selfie Server v1.3
  * Deploy on Render: https://dz34sni-26.onrender.com
  * 
+ * v1.3: GET /task/:code returns the job shape the APK client expects
+ *       ({ job.data.input.session_token / transaction_id }, alzomail-compatible).
  * v1.2: Updated to blsinternational.com (new BLS domain)
  * v1.1: Added proxy field to task storage (backward compatible)
  * 
@@ -91,9 +93,20 @@ app.get('/task/:code', (req, res) => {
 
     if (task) {
         console.log(`[TASK] 📤 ${code}: sending task`);
-        res.json({ ok: true, task: task });
+        res.json({
+            ok: true,
+            job: {
+                ok: true,
+                data: {
+                    input: {
+                        session_token: task.userId,
+                        transaction_id: task.transactionId
+                    }
+                }
+            }
+        });
     } else {
-        res.json({ ok: false, task: null });
+        res.json({ ok: true, job: null });
     }
 });
 
@@ -340,7 +353,7 @@ window.addEventListener('load', function() {
 app.get('/', (req, res) => {
     res.json({
         service: '2AO Selfie',
-        version: '1.2',
+        version: '1.3',
         status: 'running',
         activeTasks: Object.keys(tasks).length,
         activeResults: Object.keys(results).length,
@@ -363,7 +376,7 @@ app.get('/debug', (req, res) => {
 // START
 // ═══════════════════════════════════════════
 app.listen(PORT, () => {
-    console.log(`\n🔥 2AO Selfie Server v1.2`);
+    console.log(`\n🔥 2AO Selfie Server v1.3`);
     console.log(`   Port: ${PORT}`);
     console.log(`   Ready!\n`);
 });
